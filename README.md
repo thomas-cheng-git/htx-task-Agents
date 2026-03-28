@@ -128,6 +128,8 @@ GEMINI_API_KEY=your_key_here
 
 A free-tier API key is available from [Google AI Studio](https://aistudio.google.com/app/apikey). The application functions without a valid key — skill auto-detection is simply skipped.
 
+> **Gemini free-tier quota:** The free tier allows **20 requests per day** for `gemini-flash-latest`. If this daily quota is exhausted, skill auto-detection will be unavailable until the quota resets (midnight Pacific time). When quota is exceeded, the app will still create the task successfully and display a warning popup prompting you to select skills manually. To avoid hitting the limit, select skills explicitly in the task form whenever possible.
+
 ---
 
 ## 9. How to Run (Docker)

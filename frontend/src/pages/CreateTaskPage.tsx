@@ -4,6 +4,7 @@ import type { Skill } from '../types';
 import { getSkills } from '../api/skills';
 import { createTask } from '../api/tasks';
 import type { TaskCreateInput } from '../api/tasks';
+import GeminiWarningToast from '../components/GeminiWarningToast';
 import TaskFormNode, { taskReducer } from '../components/TaskFormNode';
 import type { TaskNode } from '../components/TaskFormNode';
 
@@ -28,6 +29,7 @@ export default function CreateTaskPage() {
   const [state, dispatch] = useReducer(taskReducer, initialState);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [geminiWarning, setGeminiWarning] = useState('');
 
   useEffect(() => {
     getSkills().then(setSkills);
@@ -42,8 +44,13 @@ export default function CreateTaskPage() {
     setError('');
     setSaving(true);
     try {
-      await createTask(nodeToInput(state));
-      navigate('/');
+      const result = await createTask(nodeToInput(state));
+      if (result.geminiWarning) {
+        setGeminiWarning(result.geminiWarning);
+        setTimeout(() => navigate('/'), 5000);
+      } else {
+        navigate('/');
+      }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to create task');
     } finally {
@@ -52,6 +59,8 @@ export default function CreateTaskPage() {
   };
 
   return (
+    <>
+    {geminiWarning && <GeminiWarningToast message={geminiWarning} onClose={() => navigate('/')} />}
     <div className="p-6 max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold text-[#e2e8f0] mb-6">Create Task</h1>
       <form onSubmit={handleSubmit}>
@@ -81,5 +90,6 @@ export default function CreateTaskPage() {
         </div>
       </form>
     </div>
+    </>
   );
 }

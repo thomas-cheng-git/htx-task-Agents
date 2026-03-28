@@ -12,9 +12,15 @@ export interface TaskCreateInput {
   subtasks?: TaskCreateInput[];
 }
 
-export async function createTask(data: TaskCreateInput): Promise<Task> {
-  const response = await client.post<Task>('/tasks', data);
-  return response.data;
+export interface CreateTaskResult {
+  task: Task;
+  geminiWarning?: string;
+}
+
+export async function createTask(data: TaskCreateInput): Promise<CreateTaskResult> {
+  const response = await client.post<Task & { geminiWarning?: string }>('/tasks', data);
+  const { geminiWarning, ...task } = response.data;
+  return { task: task as Task, geminiWarning };
 }
 
 export async function updateTask(

@@ -2,12 +2,17 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
+export interface SkillIdentificationResult {
+  ids: number[];
+  quotaExceeded: boolean;
+}
+
 export async function identifySkills(
   title: string,
   availableSkills: { id: number; name: string }[]
-): Promise<number[]> {
+): Promise<SkillIdentificationResult> {
   try {
-    if (!process.env.GEMINI_API_KEY) return [];
+    if (!process.env.GEMINI_API_KEY) return { ids: [], quotaExceeded: false };
 
     const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
 
@@ -24,16 +29,15 @@ Return ONLY the JSON array, nothing else.`;
     const result = await model.generateContent(prompt);
     const text = result.response.text().trim();
 
-    // Extract JSON array from response
     const match = text.match(/\[[\d,\s]*\]/);
-    if (!match) return [];
+    if (!match) return { ids: [], quotaExceeded: false };
 
     const ids: number[] = JSON.parse(match[0]);
-    // Validate IDs are in available skills
     const validIds = availableSkills.map(s => s.id);
-    return ids.filter(id => validIds.includes(id));
-  } catch (error) {
+    return { ids: ids.filter(id => validIds.includes(id)), quotaExceeded: false };
+  } catch (error: any) {
     console.error('Gemini skill identification error:', error);
-    return [];
+    const quotaExceeded = error?.status === 429;
+    return { ids: [], quotaExceeded };
   }
 }

@@ -67,33 +67,63 @@ interface TaskInput {
   subtasks?: TaskInput[];
 }
 
-async function createTaskRecursive(
-  input: TaskInput,
-  parentTaskId: number | null,
-  availableSkills: { id: number; name: string }[]
-): Promise<{ id: number }> {
-  let skillIds = input.skillIds;
+// Resolved input: all Gemini calls done, skillIds are final
+interface ResolvedTaskInput {
+  title: string;
+  skillIds: number[];
+  subtasks: ResolvedTaskInput[];
+}
 
-  // If no skills provided, use Gemini to identify them
-  if (!skillIds || skillIds.length === 0) {
-    skillIds = await identifySkills(input.title, availableSkills);
+interface ResolveResult {
+  resolved: ResolvedTaskInput;
+  geminiQuotaExceeded: boolean;
+}
+
+// Phase 1: resolve all skill IDs via Gemini (outside any transaction)
+async function resolveSkills(
+  input: TaskInput,
+  availableSkills: { id: number; name: string }[]
+): Promise<ResolveResult> {
+  let geminiQuotaExceeded = false;
+  let skillIds: number[];
+
+  if (input.skillIds && input.skillIds.length > 0) {
+    skillIds = input.skillIds;
+  } else {
+    const result = await identifySkills(input.title, availableSkills);
+    skillIds = result.ids;
+    if (result.quotaExceeded) geminiQuotaExceeded = true;
   }
 
-  const task = await prisma.task.create({
+  const subtasks: ResolvedTaskInput[] = [];
+  for (const s of input.subtasks ?? []) {
+    const sub = await resolveSkills(s, availableSkills);
+    subtasks.push(sub.resolved);
+    if (sub.geminiQuotaExceeded) geminiQuotaExceeded = true;
+  }
+
+  return { resolved: { title: input.title, skillIds, subtasks }, geminiQuotaExceeded };
+}
+
+// Phase 2: write to DB inside transaction (no external calls)
+async function createTaskResolved(
+  input: ResolvedTaskInput,
+  parentTaskId: number | null,
+  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
+): Promise<{ id: number }> {
+  const task = await tx.task.create({
     data: {
       title: input.title,
       parentTaskId,
-      skills: skillIds && skillIds.length > 0
-        ? { create: skillIds.map(id => ({ skillId: id })) }
+      skills: input.skillIds.length > 0
+        ? { create: input.skillIds.map(id => ({ skillId: id })) }
         : undefined,
     },
     select: { id: true },
   });
 
-  if (input.subtasks && input.subtasks.length > 0) {
-    for (const subtask of input.subtasks) {
-      await createTaskRecursive(subtask, task.id, availableSkills);
-    }
+  for (const subtask of input.subtasks) {
+    await createTaskResolved(subtask, task.id, tx);
   }
 
   return task;
@@ -107,17 +137,24 @@ router.post('/', async (req, res) => {
 
     const availableSkills = await prisma.skill.findMany();
 
-    const task = await prisma.$transaction(async () => {
-      return createTaskRecursive({ title, skillIds, subtasks }, null, availableSkills);
-    });
+    // Resolve all Gemini calls first, before opening the transaction
+    const { resolved, geminiQuotaExceeded } = await resolveSkills({ title, skillIds, subtasks }, availableSkills);
 
-    // Return the full task with all relations
+    const task = await prisma.$transaction(tx =>
+      createTaskResolved(resolved, null, tx)
+    );
+
     const fullTask = await prisma.task.findUnique({
       where: { id: task.id },
       include: taskInclude,
     });
 
-    res.status(201).json(fullTask);
+    const responseBody: typeof fullTask & { geminiWarning?: string } = Object.assign({}, fullTask);
+    if (geminiQuotaExceeded) {
+      responseBody.geminiWarning = 'Skill auto-detection is unavailable: Gemini API daily quota exceeded. Skills were not assigned automatically — please select them manually.';
+    }
+
+    res.status(201).json(responseBody);
   } catch (error) {
     console.error('Create task error:', error);
     res.status(500).json({ error: 'Failed to create task' });
