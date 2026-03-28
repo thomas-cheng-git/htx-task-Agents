@@ -26,15 +26,25 @@ Return ONLY a JSON array of skill IDs (numbers) that are required for this task.
 If no skills match, return [].
 Return ONLY the JSON array, nothing else.`;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().trim();
+    const tryOnce = async (): Promise<number[]> => {
+      const result = await model.generateContent(prompt);
+      const text = result.response.text().trim();
+      const match = text.match(/\[[\d,\s]*\]/);
+      if (!match) return [];
+      const ids: number[] = JSON.parse(match[0]);
+      const validIds = availableSkills.map(s => s.id);
+      return ids.filter(id => validIds.includes(id));
+    };
 
-    const match = text.match(/\[[\d,\s]*\]/);
-    if (!match) return { ids: [], quotaExceeded: false };
+    let ids = await tryOnce();
 
-    const ids: number[] = JSON.parse(match[0]);
-    const validIds = availableSkills.map(s => s.id);
-    return { ids: ids.filter(id => validIds.includes(id)), quotaExceeded: false };
+    // Retry once if empty — handles transient blank responses
+    if (ids.length === 0) {
+      await new Promise(res => setTimeout(res, 2000));
+      ids = await tryOnce();
+    }
+
+    return { ids, quotaExceeded: false };
   } catch (error: any) {
     console.error('Gemini skill identification error:', error);
     const quotaExceeded = error?.status === 429;
