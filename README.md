@@ -1,6 +1,7 @@
 # TaskFlow
 
 A full-stack task assignment application where tasks are matched to developers by skill, and Google Gemini automatically infers required skills from task titles when none are specified.
+This project is 100% created by agents.
 
 ---
 
@@ -17,7 +18,7 @@ TaskFlow allows teams to create tasks with required skills, manage a roster of d
 | Backend | Node.js 20, Express 4, TypeScript 5, Prisma 5 ORM |
 | Frontend | React 18, TypeScript, Vite 8, Tailwind CSS v4, React Router, Axios |
 | Database | PostgreSQL 15 |
-| AI | Google Gemini 1.5 Flash (`gemini-1.5-flash`) via `@google/generative-ai` |
+| AI | Google Gemini Flash Latest (`gemini-flash-latest`) via `@google/generative-ai` |
 | Infrastructure | Docker, docker-compose, nginx |
 
 ---
